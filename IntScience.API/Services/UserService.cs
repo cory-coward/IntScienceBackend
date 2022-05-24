@@ -19,6 +19,21 @@ public class UserService : IUserService
         _logger = logger;
     }
 
+    public async Task CreateDefaultRolesAsync()
+    {
+        if (await _roleManager.RoleExistsAsync("Admin") == false)
+        {
+            var adminRole = new IdentityRole { Name = "Admin", NormalizedName = "ADMIN" };
+            await _roleManager.CreateAsync(adminRole);
+        }
+
+        if (await _roleManager.RoleExistsAsync("User") == false)
+        {
+            var userRole = new IdentityRole { Name = "User", NormalizedName = "USER" };
+            await _roleManager.CreateAsync(userRole);
+        }
+    }
+
     public async Task CreateDefaultUserAsync()
     {
         var userCount = _userManager.Users.Count();

@@ -20,6 +20,7 @@ public class Program
             await context.Database.MigrateAsync();
 
             var userService = services.GetService<IUserService>();
+            await userService!.CreateDefaultRolesAsync();
             await userService!.CreateDefaultUserAsync();
         }
         catch (Exception ex)
