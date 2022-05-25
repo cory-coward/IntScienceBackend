@@ -42,9 +42,12 @@ public class UsersController : ControllerBase
         if (perPage < 1) return BadRequest("There must be at least one result per page");
 
         var users = await _userManager.Users.AsNoTracking()
+                                            .OrderBy(u => u.LastName)
                                             .Skip((pageNumber - 1) * perPage)
                                             .Take(perPage)
                                             .ToListAsync();
+
+        var userCount = await _userManager.Users.CountAsync();
 
         var userDtos = new List<UserProfileResponseDto>();
 
@@ -57,7 +60,14 @@ public class UsersController : ControllerBase
             userDtos.Add(userDto);
         }
 
-        return Ok(userDtos);
+        var userListDto = new UserListResponseDto
+        {
+            UserCount = userCount,
+            PageCount = (int)Math.Ceiling((double)userCount / perPage),
+            Users = userDtos
+        };
+
+        return Ok(userListDto);
     }
 
     [HttpGet("{userId}")]
