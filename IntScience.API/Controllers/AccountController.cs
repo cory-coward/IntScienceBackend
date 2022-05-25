@@ -1,5 +1,4 @@
-﻿using AutoMapper;
-using IntScience.API.Dtos;
+﻿using IntScience.API.Dtos;
 using IntScience.API.Services;
 using IntScience.Repository.IdentityModels;
 using Microsoft.AspNetCore.Authorization;
@@ -29,7 +28,7 @@ public class AccountController : ControllerBase
     [HttpPost("login")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(UserLoginResponseDto))]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(UserLoginResponseDto))]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login([FromBody] UserLoginDto userLoginDto)
     {
         if (userLoginDto is null || !ModelState.IsValid) return BadRequest();

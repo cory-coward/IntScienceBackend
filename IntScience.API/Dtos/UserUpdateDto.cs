@@ -15,6 +15,7 @@ public class UserUpdateDto
     [MaxLength(50)]
     public string LastName { get; set; }
 
-    [Required(ErrorMessage = "At least one user role is required.")]
-    public IList<string> Roles { get; set; }
+    [Required]
+    [MinLength(1, ErrorMessage = "You must specify at least one role for this user.")]
+    public IEnumerable<string> Roles { get; set; }
 }

@@ -27,6 +27,12 @@ public class UserService : IUserService
             await _roleManager.CreateAsync(adminRole);
         }
 
+        if (await _roleManager.RoleExistsAsync("Manager") == false)
+        {
+            var adminRole = new IdentityRole { Name = "Manager", NormalizedName = "MANAGER" };
+            await _roleManager.CreateAsync(adminRole);
+        }
+
         if (await _roleManager.RoleExistsAsync("User") == false)
         {
             var userRole = new IdentityRole { Name = "User", NormalizedName = "USER" };

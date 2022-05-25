@@ -1,8 +1,8 @@
 ﻿using AutoMapper;
 using IntScience.API.Dtos;
+using IntScience.Repository;
 using IntScience.Repository.IdentityModels;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,20 +11,23 @@ using System.Security.Claims;
 namespace IntScience.API.Controllers;
 
 [Route("api/[controller]")]
-//[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin")]
 [ApiController]
 public class UsersController : ControllerBase
 {
+    private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IMapper _mapper;
     private readonly ILogger<UsersController> _logger;
 
-    public UsersController(UserManager<ApplicationUser> userManager,
+    public UsersController(ApplicationDbContext context,
+                           UserManager<ApplicationUser> userManager,
                            RoleManager<IdentityRole> roleManager,
                            IMapper mapper,
                            ILogger<UsersController> logger)
     {
+        _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
         _mapper = mapper;
@@ -33,11 +36,26 @@ public class UsersController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(List<UserProfileResponseDto>))]
-    public async Task<IActionResult> GetUsers()
+    public async Task<IActionResult> GetUsers([FromQuery] int pageNumber = 1, [FromQuery] int perPage = 10)
     {
-        var users = await _userManager.Users.AsNoTracking().ToListAsync();
+        if (pageNumber <= 0) return BadRequest("Page number must be a positive number");
+        if (perPage < 1) return BadRequest("There must be at least one result per page");
 
-        var userDtos = _mapper.Map<List<UserProfileResponseDto>>(users);
+        var users = await _userManager.Users.AsNoTracking()
+                                            .Skip((pageNumber - 1) * perPage)
+                                            .Take(perPage)
+                                            .ToListAsync();
+
+        var userDtos = new List<UserProfileResponseDto>();
+
+        foreach (var user in users)
+        {
+            var userDto = _mapper.Map<UserProfileResponseDto>(user);
+
+            userDto.Roles = await _userManager.GetRolesAsync(user);
+
+            userDtos.Add(userDto);
+        }
 
         return Ok(userDtos);
     }
@@ -55,6 +73,7 @@ public class UsersController : ControllerBase
         if (user is null) return NotFound();
 
         var userDto = _mapper.Map<UserProfileResponseDto>(user);
+        userDto.Roles = await _userManager.GetRolesAsync(user);
 
         return Ok(userDto);
     }
@@ -68,29 +87,34 @@ public class UsersController : ControllerBase
 
         var userToAdd = _mapper.Map<ApplicationUser>(userDto);
 
-        var result = await _userManager.CreateAsync(userToAdd, userDto.Password);
+        using var transaction = _context.Database.BeginTransaction();
 
-        if (!result.Succeeded)
+        try
         {
-            var errors = result.Errors.Select(e => e.Description);
-            return BadRequest(errors);
-        }
+            var result = await _userManager.CreateAsync(userToAdd, userDto.Password);
 
-        if (await _roleManager.RoleExistsAsync("User") == false)
+            if (result.Succeeded)
+            {
+                await _userManager.AddClaimAsync(userToAdd, new Claim(ClaimTypes.NameIdentifier, userToAdd.Id));
+
+                await _userManager.AddToRolesAsync(userToAdd, userDto.Roles);
+
+                transaction.Commit();
+
+                var actionName = nameof(GetUserById);
+                var routeParameters = new { userId = userToAdd.Id };
+                var createdUser = _mapper.Map<UserProfileResponseDto>(userToAdd);
+                createdUser.Roles = userDto.Roles;
+
+                return CreatedAtAction(actionName, routeParameters, createdUser);
+            }
+
+            return StatusCode(StatusCodes.Status500InternalServerError);
+        }
+        catch (Exception ex)
         {
-            var userRole = new IdentityRole { Name = "User", NormalizedName = "USER" };
-            await _roleManager.CreateAsync(userRole);
+            return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
         }
-
-        await _userManager.AddToRoleAsync(userToAdd, "User");
-
-        await _userManager.AddClaimAsync(userToAdd, new Claim(ClaimTypes.NameIdentifier, userToAdd.Id));
-
-        var actionName = nameof(GetUserById);
-        var routeParameters = new { userId = userToAdd.Id };
-        var createdUser = _mapper.Map<UserProfileResponseDto>(userToAdd);
-
-        return CreatedAtAction(actionName, routeParameters, createdUser);
     }
 
     [HttpPut]
@@ -105,19 +129,29 @@ public class UsersController : ControllerBase
 
         if (userToUpdate is null) return NotFound();
 
-        var currentUserRoles = await _userManager.GetRolesAsync(userToUpdate);
+        using var dbTransaction = _context.Database.BeginTransaction();
 
-        var rolesToAdd = userDto.Roles.Except(currentUserRoles);
-        var rolesToRemove = currentUserRoles.Except(userDto.Roles);
+        try
+        {
+            var currentUserRoles = await _userManager.GetRolesAsync(userToUpdate);
 
-        userToUpdate.FirstName = userDto.FirstName;
-        userToUpdate.LastName = userDto.LastName;
+            var rolesToAdd = userDto.Roles.Except(currentUserRoles);
+            var rolesToRemove = currentUserRoles.Except(userDto.Roles);
 
-        await _userManager.UpdateAsync(userToUpdate);
-        await _userManager.AddToRolesAsync(userToUpdate, rolesToAdd);
-        await _userManager.RemoveFromRolesAsync(userToUpdate, rolesToRemove);
+            userToUpdate.FirstName = userDto.FirstName;
+            userToUpdate.LastName = userDto.LastName;
 
-        return NoContent();
+            await _userManager.UpdateAsync(userToUpdate);
+            await _userManager.AddToRolesAsync(userToUpdate, rolesToAdd);
+            await _userManager.RemoveFromRolesAsync(userToUpdate, rolesToRemove);
+
+            dbTransaction.Commit();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+        }
     }
 
     [HttpDelete("{userId}")]
