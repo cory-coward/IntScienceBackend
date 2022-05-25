@@ -35,7 +35,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(List<UserProfileResponseDto>))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(UserListResponseDto))]
     public async Task<IActionResult> GetUsers([FromQuery] int pageNumber = 1, [FromQuery] int perPage = 10)
     {
         if (pageNumber <= 0) return BadRequest("Page number must be a positive number");
